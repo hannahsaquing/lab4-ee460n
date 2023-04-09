@@ -37,15 +37,15 @@ sum LDB R4, R2, #0
     STW R5, R0, #0
  
  ; cause unaligned access exception by storing at xC017
-    AND R1, R1, #0
-    LEA R0, THIRD
-    LDW R1, R0, #0
-    ADD R1, R1, #3
-    STW R5, R1, #0
+    ;AND R1, R1, #0
+    ;LEA R0, THIRD
+    ;LDW R1, R0, #0
+    ;ADD R1, R1, #3
+    ;STW R5, R1, #0
 
  ; cause unknown opcode by using .FILL psuedo op with 1010 and 1011
-    .FILL xA000
-    .FILL xB000
+    ;.FILL xA000
+    ;.FILL xB000
 
 
 first   .FILL x4000
