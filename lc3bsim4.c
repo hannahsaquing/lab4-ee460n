@@ -210,6 +210,8 @@ int INTV; /* Interrupt vector register */
 int EXCV; /* Exception vector register */
 int SSP; /* Initial value of system stack pointer */
 int USP; /* Initial value of user stack pointer */
+int INT; 
+int EXC;
 PSR PSR;
 
 } System_Latches;
@@ -738,24 +740,34 @@ void eval_micro_sequencer() {
     //printf("Didn't get IRD...\n");
     NEXT_LATCHES.STATE_NUMBER = GetJ(CURRENT_LATCHES.MICROINSTRUCTION);
 
-    if (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) == 0b10 && CURRENT_LATCHES.BEN) {
-        //printf("BEN ENABLED\n");
+    if (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) == 0b010 && CURRENT_LATCHES.BEN) {
+        printf("BEN ENABLED\n");
         NEXT_LATCHES.STATE_NUMBER |= 0x04;
     }
-    if (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) == 0b01 && CURRENT_LATCHES.READY) {
-        //printf("READY BIT ASSERTED\n");
+    if (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) == 0b001 && CURRENT_LATCHES.READY) {
+        printf("READY BIT ASSERTED\n");
         NEXT_LATCHES.STATE_NUMBER |= 0x02;
     }
-    if (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) == 0b11) {
-        //printf("ADDR MODE\n");
-        printf("IR = %.4x\n", CURRENT_LATCHES.IR);
+    if (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) == 0b011) {
         int ir11 = Low16bits(CURRENT_LATCHES.IR & 0x0800);
         ir11 = ir11 >> 10;
-        printf("IR[11]: %d\n", ir11);
+        //printf("IR[11]: %d\n", ir11);
         if (ir11) {
+            printf("IR[11] BIT ASSERTED\n");
             NEXT_LATCHES.STATE_NUMBER |= 0x01;
         }
-        printf("Next State: %.4x\n", NEXT_LATCHES.STATE_NUMBER);
+    if (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) == 0b100 && CURRENT_LATCHES.PSR.PRIVILEGE == 1) {
+        printf("USER PRIVILEGE MODE\n");
+        NEXT_LATCHES.STATE_NUMBER |= 0x08;
+    }
+    if (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) == 0b101 && CURRENT_LATCHES.INT != 0) {
+        printf("INTERRUPT ASSERTED\n");
+        NEXT_LATCHES.STATE_NUMBER |= 0x10;
+    }
+    if (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) == 0b110 && CURRENT_LATCHES.EXC != 0) {
+        printf("EXCEPTION ASSERTED\n");
+        NEXT_LATCHES.STATE_NUMBER |= 0x20;
+    }
     }
   }  //printf("Headed to state %.4x\n", NEXT_LATCHES.STATE_NUMBER);
   int i;
@@ -763,7 +775,6 @@ void eval_micro_sequencer() {
   for (i = 0; i < numBits; i++) {
     NEXT_LATCHES.MICROINSTRUCTION[i] = CONTROL_STORE[NEXT_LATCHES.STATE_NUMBER][i];
   }
-  //printf("Next state: 0x%.4x\n", NEXT_LATCHES.STATE_NUMBER);
 }
 int men = 0;
 
