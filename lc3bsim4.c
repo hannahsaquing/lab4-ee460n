@@ -804,29 +804,14 @@ void cycle_memory() {
     NEXT_LATCHES.READY = 1;
   }
   if (CURRENT_LATCHES.READY) {
-    // change from word addressable to byte addressable
-    //printf("Current latch READY\n");
     int addy = CURRENT_LATCHES.MAR / 2;
-    // determine if read or write
     int rw = GetR_W(CURRENT_LATCHES.MICROINSTRUCTION);
     int read = 0;
     int write = 1;
     int address = CURRENT_LATCHES.MAR / 2;
     if (rw == read) {
-        // do read (LDW, LDB, LEA?)
-        //printf("READING...\n");
         NEXT_LATCHES.MDR = Low8bits(MEMORY[address][0]);
         NEXT_LATCHES.MDR |= (getHighByte(MEMORY[address][1]));
-        /*if (!GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION)) {
-            if (CURRENT_LATCHES.MAR & 0x0001 == 1) {
-                NEXT_LATCHES.MDR = NEXT_LATCHES.MDR >> 8;
-                NEXT_LATCHES.MDR = NEXT_LATCHES.MDR & 0x00FF;
-            }
-            else {
-                NEXT_LATCHES.MDR = NEXT_LATCHES.MDR & 0x00FF;
-            }
-            NEXT_LATCHES.MDR = SignExtend(NEXT_LATCHES.MDR, 8);
-        }*/
     }
     else if (rw == write) {
         printf("WRITING!! We are writing from the data from address 0x%.4x\n", address);
@@ -836,15 +821,12 @@ void cycle_memory() {
             MEMORY[address][1] = Low8bits(writeHighByte(CURRENT_LATCHES.MDR));
         }
         else { // otherwise we are writing a byte
-            //int idx = 0x0001 & CURRENT_LATCHES.MAR;
             int idx = (CURRENT_LATCHES.MAR % 2) ? 1 : 0;
             MEMORY[address][idx] = Low8bits(CURRENT_LATCHES.MDR);
         }
     }
-
     NEXT_LATCHES.READY = 0;
-    //printf("Next_latch READY set to 0\n");
-    men = 0; //per usual
+    men = 0; 
   }
 }
 
@@ -854,11 +836,24 @@ int driveALU = 0;
 int driveSHF = 0;
 int driveMDR = 0;
 
+int drivePCM2 = 0;
+int driveVECTOR = 0;
+int drivePSR = 0;
+int driveUSP = 0;
+int driveSPMux = 0;
+
 int Gate_MARMUX;
 int Gate_PC;
 int Gate_ALU;
 int Gate_SHF;
 int Gate_MDR;
+
+int GatePCM2;
+int GateVECTOR;
+int GatePSR;
+int GateUSP;
+int GateSPMux;
+
 
 int bit(int x, int y) {
   return (((x) & (1 << y)) >> y);} 
@@ -876,25 +871,16 @@ void eval_bus_drivers() {
    *		 Gate_MDR.
    */    
   if (GetGATE_MARMUX(CURRENT_LATCHES.MICROINSTRUCTION)) {
-    //printf("Driving MARMAX...\n");
     driveMM = 1;
-    //int marmux_1 = GetMARMUX(CURRENT_LATCHES.MICROINSTRUCTION); // select LSHF(ZEXT[IR[7:0]],1)
-    //printf("MARMUX = %d\n", GetMARMUX(CURRENT_LATCHES.MICROINSTRUCTION));
     if (GetMARMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0) {
         printf("Selected LSHF(ZEXT[IR[7:0]],1)\n");
         Gate_MARMUX = Low8bits(CURRENT_LATCHES.IR) << 1;
-        //Gate_MARMUX = SignExtend(Low8bits(CURRENT_LATCHES.IR) << 1, 8);
     }
     else {
         if (GetADDR1MUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0) {
-            //printf("origin = current pc\n");
             origin = CURRENT_LATCHES.PC;
-            //printf("Origin PC: 0x%.4x\n", origin);
-
         }
         else { // calculating base register
-            // this is taking the data from memory not the address
-            //origin = ((GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION)) ? CURRENT_LATCHES.REGS[getRegNum(6)] : CURRENT_LATCHES.REGS[getRegNum(9)]);
             printf("GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION: %d\n", (GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION)));
             if ((GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0)) { // ,source IR[11:9]
                 printf("Base Register is R%d\n", getRegNum(9));
@@ -921,20 +907,14 @@ void eval_bus_drivers() {
             printf("Offset11: %d\n", addition);
             }
         else {printf("offset 0\n"); addition = 0;}
-        //addition = addition * 2;
-        //printf("GetLSHF1(CURRENT_LATCHES.MICROINSTRUCTION): %d\n", GetLSHF1(CURRENT_LATCHES.MICROINSTRUCTION));
         printf("before shift Origin: %.4x\nAddition: %.4x\n", origin, addition);
         addition = (GetLSHF1(CURRENT_LATCHES.MICROINSTRUCTION)) ? addition << 1 : addition;
         printf("Origin: %.4x\nAddition: %.4x\n", origin, addition);
         Gate_MARMUX = origin + addition;
         printf("Gate_MARMUX is = 0x%.4x\n", Gate_MARMUX);
-        //printf("Gate_MARMUX = 0x%.4x, Origin = 0x%.4x, Addition = %d\n", Gate_MARMUX, origin, addition);
-
     }
   }  
-  else {
-    driveMM = 0;
-  }
+  else {driveMM = 0;}
   
   if (GetGATE_PC(CURRENT_LATCHES.MICROINSTRUCTION)) {
     drivePC = 1;
@@ -988,23 +968,18 @@ void eval_bus_drivers() {
     else if (shiftType == 0b11) {
         val = (sr1 >> shfAmt);
         int signBit = (sr1 & 0x8000) >> 15;
-        printf("Sign Bit = %d\n", signBit);
+        //printf("Sign Bit = %d\n", signBit);
         if (signBit) {
-            //int onesToShiftIn = (16 - shfAmt);     
             int orVal = 0xFFFF >> shfAmt;
-            printf("orVal before not: %.4x\n", orVal);
+            //printf("orVal before not: %.4x\n", orVal);
             orVal = Low16bits(~orVal);
-            printf("orVal: %.4x\nval: %.4x\n", orVal, val);
+            //printf("orVal: %.4x\nval: %.4x\n", orVal, val);
             val = val | orVal;
             val = Low16bits(val);
         }
-        /*int i = 0;
-        for(i = 0; i< shfAmt;i++){
-          Gate_SHF = (!bit(CURRENT_LATCHES.REGS[sr1],15)) ? Low16bits(CURRENT_LATCHES.REGS[sr1])/2 : (0xFFFF0000 | CURRENT_LATCHES.REGS[sr1])/2;
-        }*/
-    }
+        }
     Gate_SHF = Low16bits(val);
-    printf("Shifted Value: 0x%.4x\n", Gate_SHF);
+    //printf("Shifted Value: 0x%.4x\n", Gate_SHF);
   } else {driveSHF = 0;}
   
   if (GetGATE_MDR(CURRENT_LATCHES.MICROINSTRUCTION)) {
@@ -1029,16 +1004,11 @@ void eval_bus_drivers() {
     Gate_SHF = Low16bits(Gate_SHF);
     Gate_MDR = Low16bits(Gate_MDR);
 
-    //printf("GetGATE_MARMUX: %d\n", GetGATE_MARMUX(CURRENT_LATCHES.MICROINSTRUCTION));
-    //printf("GetGATE_ALU: %d\n", GetGATE_ALU(CURRENT_LATCHES.MICROINSTRUCTION));
-    /*printf("GetGATE_PC: %d\n", GetGATE_PC(CURRENT_LATCHES.MICROINSTRUCTION));
-    printf("GetGATE_SHF: %d\n", GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION));
-    printf("GetGATE_MDR: %d\n", GetGATE_MDR(CURRENT_LATCHES.MICROINSTRUCTION));
-    printf("Gate_MARMUX: 0x%.4x\n", Gate_MARMUX);
-    printf("Gate_ALU: 0x%.4x\n", Gate_ALU);
-    printf("Gate_PC: 0x%.4x\n", Gate_PC);
-    printf("Gate_SHF: 0x%.4x\n", Gate_SHF);
-    printf("Gate_MDR: 0x%.4x\n", Gate_MDR);*/
+    GatePCM2 = Low16bits(GatePCM2);
+    GateVECTOR = Low16bits(GateVECTOR);
+    GatePSR = Low16bits(GatePSR);
+    GateUSP = Low16bits(GateUSP);
+    GateSPMux = Low16bits(GateSPMux);
 }
   void drive_bus() {
     printf("Starting drive_bus()...\n");
