@@ -214,7 +214,7 @@ int wMAR;
 int INT; 
 int EXC;
 int VECTOR;
-process_status_reg PSR;
+int PSR;
 
 } System_Latches;
 
@@ -758,7 +758,7 @@ void eval_micro_sequencer() {
             printf("IR[11] BIT ASSERTED\n");
             NEXT_LATCHES.STATE_NUMBER |= 0x01;
         }
-    if (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) == 0b100 && CURRENT_LATCHES.PSR.PRIVILEGE == 1) {
+    if (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) == 0b100 && (CURRENT_LATCHES.PSR >> 15) == 1) {
         printf("USER PRIVILEGE MODE\n");
         NEXT_LATCHES.STATE_NUMBER |= 0x08;
     }
@@ -782,6 +782,11 @@ int men = 0;
 
 void cycle_memory() {
     printf("Starting cycle_memory()...\n");
+    if (CYCLE_COUNT == 300) {
+        NEXT_LATCHES.INT = 1;
+        NEXT_LATCHES.INTV = 0x01;
+    }
+
   /* 
    * This function emulates memory and the WE logic. 
    * Keep track of which cycle of MEMEN we are dealing with.  
@@ -806,24 +811,47 @@ void cycle_memory() {
     NEXT_LATCHES.READY = 1;
   }
   if (CURRENT_LATCHES.READY) {
-    int addy = CURRENT_LATCHES.MAR / 2;
     int rw = GetR_W(CURRENT_LATCHES.MICROINSTRUCTION);
     int read = 0;
     int write = 1;
     int address = CURRENT_LATCHES.MAR / 2;
+    int word = GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION);
+    int idx = (CURRENT_LATCHES.MAR % 2) ? 1 : 0;
+    if (CURRENT_LATCHES.MAR < 0x3000 && ((CURRENT_LATCHES.PSR >> 15) == 1)) {
+        NEXT_LATCHES.EXC = 1;
+        NEXT_LATCHES.EXCV = 0x02;
+    }
     if (rw == read) {
-        NEXT_LATCHES.MDR = Low8bits(MEMORY[address][0]);
-        NEXT_LATCHES.MDR |= (getHighByte(MEMORY[address][1]));
+        if (word) {
+            if (idx == 1) {
+                NEXT_LATCHES.EXC = 1;
+                NEXT_LATCHES.EXCV = 0x03;
+                NEXT_LATCHES.MDR = getHighByte(MEMORY[address][1]);
+                NEXT_LATCHES.MDR |= Low8bits(MEMORY[address+2][0]);
+            }
+            else {
+                NEXT_LATCHES.MDR = Low8bits(MEMORY[address][0]);
+                NEXT_LATCHES.MDR |= (getHighByte(MEMORY[address][1]));
+            }
+        }
+        else { // byte
+            NEXT_LATCHES.MDR = Low8bits(MEMORY[address][idx]);
+        }   
     }
     else if (rw == write) {
-        printf("WRITING!! We are writing from the data from address 0x%.4x\n", address);
-        int word = GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION);
         if (word) {
-            MEMORY[address][0] = Low8bits(CURRENT_LATCHES.MDR);
-            MEMORY[address][1] = Low8bits(writeHighByte(CURRENT_LATCHES.MDR));
+            if (idx == 1) {
+                NEXT_LATCHES.EXC = 1;
+                NEXT_LATCHES.EXCV = 0x03;
+                MEMORY[address][1] = Low8bits(writeHighByte(CURRENT_LATCHES.MDR));
+                MEMORY[address+2][0] = Low8bits((CURRENT_LATCHES.MDR));
+            }
+            else {
+                MEMORY[address][0] = Low8bits(CURRENT_LATCHES.MDR);
+                MEMORY[address][1] = Low8bits(writeHighByte(CURRENT_LATCHES.MDR));
+            }
         }
         else { // otherwise we are writing a byte
-            int idx = (CURRENT_LATCHES.MAR % 2) ? 1 : 0;
             MEMORY[address][idx] = Low8bits(CURRENT_LATCHES.MDR);
         }
     }
@@ -931,25 +959,32 @@ void eval_bus_drivers() {
 
     if (GetGATE_PSR(CURRENT_LATCHES.MICROINSTRUCTION)) {
         drivePSR = 1;
-        int psrVal = (CURRENT_LATCHES.PSR.PRIVILEGE << 15) | (CURRENT_LATCHES.PSR.PRIORITY << 10) | (CURRENT_LATCHES.PSR.N << 2) | (CURRENT_LATCHES.PSR.Z << 1) | (CURRENT_LATCHES.P );
-        Gate_PSR = psrVal;
+        Gate_PSR = CURRENT_LATCHES.PSR;
     } else {drivePSR = 0;}
 
     if (GetGATE_VECTOR(CURRENT_LATCHES.MICROINSTRUCTION)) {
         driveVECTOR = 1;
-        int val;
-        // if it's an interrupt
-        // else it's an exception and we need to figure out which one
-        // i think i can go set them in the places that they would occur and set current_latches.excv to the appropriate one and the also set the excv to 1 to indicate excv
-    } else {driveVECTOR = 1;}
+        Gate_VECTOR = CURRENT_LATCHES.VECTOR;    
+    } 
+    else {driveVECTOR = 0;}
+
+    if (GetGATE_SPMUX(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        int op = GetSPMUX(CURRENT_LATCHES.MICROINSTRUCTION);
+        if (op == 0) {Gate_SPMux = CURRENT_LATCHES.USP;}
+        else if (op == 1) {Gate_SPMux = CURRENT_LATCHES.REGS[6] - 2;}
+        else if (op == 2) {Gate_SPMux = CURRENT_LATCHES.REGS[6] + 2;}
+        else if (op == 3) {Gate_SPMux = CURRENT_LATCHES.SSP;}
+    }
+
+    if (GetGATE_USP(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        driveUSP = 1;
+        Gate_USP = CURRENT_LATCHES.USP;
+    } else { driveUSP = 0;}
 
    if (GetGATE_ALU(CURRENT_LATCHES.MICROINSTRUCTION)) {
-    printf("Gating ALU...\n");
     driveALU = 1;
     int sr1 = (GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0) ? CURRENT_LATCHES.REGS[getRegNum(9)] : CURRENT_LATCHES.REGS[getRegNum(6)]; 
-    printf("sr1 = 0x%.4x\n", sr1);
     int sr2 = (CURRENT_LATCHES.IR & 0x0020) ? SignExtend(CURRENT_LATCHES.IR, 5) : CURRENT_LATCHES.REGS[getRegNum(0)];
-    printf("sr2 = 0x%.4x\n", sr2);    
     int op = GetALUK(CURRENT_LATCHES.MICROINSTRUCTION);
     printf("ALUK = %d\n", op);
     if (op == 0) {
@@ -970,7 +1005,7 @@ void eval_bus_drivers() {
         Gate_ALU = Low8bits(newVal);
     }
     printf("Gate_ALU Value: 0x%.4x\n", Gate_ALU);
- } else {driveALU = 0;}
+    } else {driveALU = 0;}
   
   if (GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION)) {
     driveSHF = 1;
@@ -1062,6 +1097,18 @@ void eval_bus_drivers() {
         printf("Gating MDR...\n");
         BUS = Gate_MDR;
     }
+    else if (drivePCM2) {
+        BUS = Gate_PCM2;
+    }
+    else if (drivePSR) {
+        BUS = Gate_PSR;
+    }
+    else if (driveSPMux) {
+        BUS = Gate_SPMux;
+    }
+    else if (driveVECTOR) {
+        BUS = Gate_VECTOR;
+    }
     else {
         BUS = 0;
     }
@@ -1103,6 +1150,9 @@ void latch_datapath_values() {
             NEXT_LATCHES.MDR = Low8bits(BUS);
         }
     }
+  else if (GetLD_MDR(CURRENT_LATCHES.MICROINSTRUCTION)) {
+    NEXT_LATCHES.MDR = Low16bits(BUS);
+  }
 
   if (GetLD_IR(CURRENT_LATCHES.MICROINSTRUCTION)) {
     NEXT_LATCHES.IR = Low16bits(BUS);
@@ -1117,19 +1167,20 @@ void latch_datapath_values() {
     NEXT_LATCHES.BEN = (ir11 && CURRENT_LATCHES.N) || (ir10 && CURRENT_LATCHES.Z) || (ir9 && CURRENT_LATCHES.P);
   }
 
-    //printf("GetLD_REG(CURRENT_LATCHES.MICROINSTRUCTION): %d\n", GetLD_REG(CURRENT_LATCHES.MICROINSTRUCTION));
-    //printf("GetDRMUX(CURRENT_LATCHES.MICROINSTRUCTION): %d\n", GetDRMUX(CURRENT_LATCHES.MICROINSTRUCTION));
     if (GetLD_REG(CURRENT_LATCHES.MICROINSTRUCTION)) {
-    if (GetDRMUX(CURRENT_LATCHES.MICROINSTRUCTION)) {
-        //printf("Low16bits(BUS): %d", Low16bits(BUS));
+        if (GetSPMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0b11) {
+            NEXT_LATCHES.REGS[6] = Low16bits(BUS);
+        }
+        else if (GetSPMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0b00) {
+            NEXT_LATCHES.REGS[6] = Low16bits(BUS);
+        }
+    }
+    else if (GetDRMUX(CURRENT_LATCHES.MICROINSTRUCTION)) {
         NEXT_LATCHES.REGS[7] = Low16bits(BUS);
     } 
     else {
-        printf("BUS VALUE: %.4x\n", BUS);
-        printf("Register #%d\n", getRegNum(9));
         NEXT_LATCHES.REGS[getRegNum(9)] = Low16bits(BUS);
     }
-  }
 
   if (GetLD_CC(CURRENT_LATCHES.MICROINSTRUCTION)) {
     NEXT_LATCHES.N = 0;
@@ -1174,7 +1225,7 @@ void latch_datapath_values() {
             addition = SignExtend(CURRENT_LATCHES.IR, 9);
             printf("Addition = %d\n", addition);
         }
-        else if (addr2mux == 3) { //offset9
+        else if (addr2mux == 3) { //offset11
             addition = SignExtend(CURRENT_LATCHES.IR, 11);
         }
         else {
@@ -1183,6 +1234,27 @@ void latch_datapath_values() {
         addition = (GetLSHF1(CURRENT_LATCHES.MICROINSTRUCTION)) ? addition << 1 : addition;   
         NEXT_LATCHES.PC = origin + addition; 
         NEXT_LATCHES.PC = Low16bits(NEXT_LATCHES.PC);
+    }
+  }
+    /*SSP, USP, VECTOR, INTV, EXCV, PSR*/
+    if (GetLD_SSP(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        NEXT_LATCHES.SSP = CURRENT_LATCHES.REGS[6];
+    }
+
+    if (GetLD_USP(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        NEXT_LATCHES.USP = CURRENT_LATCHES.REGS[6];
+    }
+
+    if (GetLD_VECTOR(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        if (GetIEMUX(CURRENT_LATCHES.MICROINSTRUCTION)) {
+            NEXT_LATCHES.VECTOR = 0x0200 | (CURRENT_LATCHES.EXCV << 1);
         }
+        else {
+            NEXT_LATCHES.VECTOR = 0x0201;
+        }
+    }
+
+    if (GetLD_PSR(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        NEXT_LATCHES.PSR = Low16bits(BUS);
     }
 }
