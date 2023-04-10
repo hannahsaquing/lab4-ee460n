@@ -182,7 +182,7 @@ typedef struct PSR_Struct {
         N,
         Z,
         P
-} PSR ;
+} process_status_reg ;
 
 typedef struct System_Latches_Struct{
 
@@ -210,9 +210,11 @@ int INTV; /* Interrupt vector register */
 int EXCV; /* Exception vector register */
 int SSP; /* Initial value of system stack pointer */
 int USP; /* Initial value of user stack pointer */
+int wMAR;
 int INT; 
 int EXC;
-PSR PSR;
+int VECTOR;
+process_status_reg PSR;
 
 } System_Latches;
 
@@ -848,11 +850,11 @@ int Gate_ALU;
 int Gate_SHF;
 int Gate_MDR;
 
-int GatePCM2;
-int GateVECTOR;
-int GatePSR;
-int GateUSP;
-int GateSPMux;
+int Gate_PCM2;
+int Gate_VECTOR;
+int Gate_PSR;
+int Gate_USP;
+int Gate_SPMux;
 
 
 int bit(int x, int y) {
@@ -870,6 +872,7 @@ void eval_bus_drivers() {
    *		 Gate_SHF,
    *		 Gate_MDR.
    */    
+
   if (GetGATE_MARMUX(CURRENT_LATCHES.MICROINSTRUCTION)) {
     driveMM = 1;
     if (GetMARMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0) {
@@ -921,6 +924,25 @@ void eval_bus_drivers() {
     Gate_PC = CURRENT_LATCHES.PC;
   } else {drivePC = 0;}
    
+    if (GetGATE_PCM2(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        drivePCM2 = 1;
+        Gate_PCM2 = CURRENT_LATCHES.PC - 2;
+    } else {drivePCM2 = 0;}
+
+    if (GetGATE_PSR(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        drivePSR = 1;
+        int psrVal = (CURRENT_LATCHES.PSR.PRIVILEGE << 15) | (CURRENT_LATCHES.PSR.PRIORITY << 10) | (CURRENT_LATCHES.PSR.N << 2) | (CURRENT_LATCHES.PSR.Z << 1) | (CURRENT_LATCHES.P );
+        Gate_PSR = psrVal;
+    } else {drivePSR = 0;}
+
+    if (GetGATE_VECTOR(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        driveVECTOR = 1;
+        int val;
+        // if it's an interrupt
+        // else it's an exception and we need to figure out which one
+        // i think i can go set them in the places that they would occur and set current_latches.excv to the appropriate one and the also set the excv to 1 to indicate excv
+    } else {driveVECTOR = 1;}
+
    if (GetGATE_ALU(CURRENT_LATCHES.MICROINSTRUCTION)) {
     printf("Gating ALU...\n");
     driveALU = 1;
@@ -1004,11 +1026,11 @@ void eval_bus_drivers() {
     Gate_SHF = Low16bits(Gate_SHF);
     Gate_MDR = Low16bits(Gate_MDR);
 
-    GatePCM2 = Low16bits(GatePCM2);
-    GateVECTOR = Low16bits(GateVECTOR);
-    GatePSR = Low16bits(GatePSR);
-    GateUSP = Low16bits(GateUSP);
-    GateSPMux = Low16bits(GateSPMux);
+    Gate_PCM2 = Low16bits(Gate_PCM2);
+    Gate_VECTOR = Low16bits(Gate_VECTOR);
+    Gate_PSR = Low16bits(Gate_PSR);
+    Gate_USP = Low16bits(Gate_USP);
+    Gate_SPMux = Low16bits(Gate_SPMux);
 }
   void drive_bus() {
     printf("Starting drive_bus()...\n");
