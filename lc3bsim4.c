@@ -50,7 +50,7 @@ void latch_datapath_values();
 /***************************************************************/
 enum CS_BITS {                                                  
     IRD,
-    COND1, COND0,
+    COND2, COND1, COND0,
     J5, J4, J3, J2, J1, J0,
     LD_MAR,
     LD_MDR,
@@ -59,21 +59,36 @@ enum CS_BITS {
     LD_REG,
     LD_CC,
     LD_PC,
+    LD_SSP,
+    LD_USP,
+    LD_VECTOR,
+    LD_INTV,
+    LD_EXCV,
+    LD_PSR,
     GATE_PC,
     GATE_MDR,
     GATE_ALU,
     GATE_MARMUX,
     GATE_SHF,
+    GATE_PCM2,
+    GATE_VECTOR,
+    GATE_PSR,
+    GATE_USP,
+    GATE_SPMUX,
     PCMUX1, PCMUX0,
     DRMUX,
     SR1MUX,
     ADDR1MUX,
     ADDR2MUX1, ADDR2MUX0,
     MARMUX,
+    IEMUX,
+    EXCVMUX,
+    SPMUX1, SPMUX0,
     ALUK1, ALUK0,
     MIO_EN,
     R_W,
     DATA_SIZE,
+    ALIGN,
     LSHF1,
 /* MODIFY: you have to add all your new control signals */
     CONTROL_STORE_BITS
@@ -83,7 +98,7 @@ enum CS_BITS {
 /* Functions to get at the control bits.                       */
 /***************************************************************/
 int GetIRD(int *x)           { return(x[IRD]); }
-int GetCOND(int *x)          { return((x[COND1] << 1) + x[COND0]); }
+int GetCOND(int *x)          { return((x[COND2] << 2) + (x[COND1] << 1) + x[COND0]); }
 int GetJ(int *x)             { return((x[J5] << 5) + (x[J4] << 4) +
 				      (x[J3] << 3) + (x[J2] << 2) +
 				      (x[J1] << 1) + x[J0]); }
@@ -111,6 +126,24 @@ int GetR_W(int *x)           { return(x[R_W]); }
 int GetDATA_SIZE(int *x)     { return(x[DATA_SIZE]); } 
 int GetLSHF1(int *x)         { return(x[LSHF1]); }
 /* MODIFY: you can add more Get functions for your new control signals */
+int GetLD_SSP(int *x)        { return(x[LD_SSP]);}
+int GetLD_USP(int *x)        { return(x[LD_USP]);}
+int GetLD_VECTOR(int *x)        { return(x[LD_VECTOR]);}
+int GetLD_INTV(int *x)        { return(x[LD_INTV]);}
+int GetLD_EXCV(int *x)        { return(x[LD_EXCV]);}
+int GetLD_PSR(int *x)        { return(x[LD_PSR]);}
+
+int GetGATE_PCM2(int *x)      {return(x[GATE_PCM2]);}
+int GetGATE_VECTOR(int *x)      {return(x[GATE_VECTOR]);}
+int GetGATE_PSR(int *x)      {return(x[GATE_PSR]);}
+int GetGATE_USP(int *x)      {return(x[GATE_USP]);}
+int GetGATE_SPMUX(int *x)      {return(x[GATE_SPMUX]);}
+
+int GetIEMUX(int *x)      {return(x[IEMUX]);}
+int GetEXCV(int *x)       {return(x[EXCVMUX]);}
+int GetSPMUX(int *x)      {return((x[SPMUX1] << 1) + (x[SPMUX0]));}
+
+int GetALIGN(int *x)      {return(x[ALIGN]);}
 
 /***************************************************************/
 /* The control store rom.                                      */
@@ -142,6 +175,15 @@ int MEMORY[WORDS_IN_MEM][2];
 int RUN_BIT;	/* run bit */
 int BUS;	/* value of the bus */
 
+/* PSR Data Structure */
+typedef struct PSR_Struct {
+    int PRIORITY,
+        PRIVILEGE,
+        N,
+        Z,
+        P
+} PSR ;
+
 typedef struct System_Latches_Struct{
 
 int PC,		/* program counter */
@@ -167,12 +209,12 @@ int STATE_NUMBER; /* Current State Number - Provided for debugging */
 int INTV; /* Interrupt vector register */
 int EXCV; /* Exception vector register */
 int SSP; /* Initial value of system stack pointer */
-/* MODIFY: You may add system latches that are required by your implementation */
+int USP; /* Initial value of user stack pointer */
+PSR PSR;
 
 } System_Latches;
 
 /* Data Structure for Latch */
-
 System_Latches CURRENT_LATCHES, NEXT_LATCHES;
 
 /***************************************************************/
