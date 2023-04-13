@@ -1,3 +1,2 @@
-.ORIG x1A00
-HALT
-.END
+x1A00
+xF025
