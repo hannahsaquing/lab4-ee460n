@@ -26,7 +26,7 @@ SECOND  .FILL xC000
 
 SUM     LDB R4, R2, #0
         ADD R5, R5, R4
-        ADD R2, R2, #1 ; increment address
+        ADD R2, R2, #2 ; increment address
         ADD R0, R0, #-1
         BRp SUM
         ADD R1, R1, #-1
